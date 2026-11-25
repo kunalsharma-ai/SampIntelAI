@@ -1,0 +1,54 @@
+# Local stack. `docker compose up -d postgres redis` for development, or `docker compose up --build` for everything.
+# Temporal and an OIDC provider join in the phases that first use them (ADR-003, ADR-010).
+name: sampintel
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: sampintel
+    ports: ['5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d sampintel']
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:8
+    ports: ['6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+
+  migrate:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    command: ['node', 'packages/db/dist/migrate.js']
+    environment:
+      DATABASE_ADMIN_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/sampintel
+    depends_on: { postgres: { condition: service_healthy } }
+    profiles: ['app']
+
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://si_api:${SI_API_DB_PASSWORD:?set SI_API_DB_PASSWORD}@postgres:5432/sampintel
+      DATABASE_ADMIN_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/sampintel
+    ports: ['4100:4100']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    profiles: ['app']
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args: { SI_API_URL: 'http://api:4100' }
+    ports: ['3100:3100']
+    depends_on: [api]
+    profiles: ['app']
+
+volumes:
+  pgdata:
