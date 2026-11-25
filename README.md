@@ -54,3 +54,19 @@ apps/web            Next.js 16 App Router, Tailwind 4, Radix, cmdk; four themes 
 packages/contracts  zod schemas shared by API and web
 packages/db         Drizzle schema and SQL migrations, including row-level security
 ```
+
+## Load test
+
+`apps/api/src/scripts/load-test.ts` creates a throwaway `loadtest-*` tenant with 20 Tenant Admin accounts, signs
+them all in with MFA, then runs a weighted read/write mix (40% `/auth/me`, 20% `/users`, 20% `/audit`, 15%
+`/notifications`, 5% `PUT /settings/tenant`) at several concurrency levels and prints throughput, errors, status
+codes and p50/p95/p99 latency. It refuses to run with `NODE_ENV=production`.
+
+```sh
+# The API's per-address limits would (correctly) reject a single-machine load run, so raise them for this run only.
+LOGIN_RATE_LIMIT=1000 API_RATE_LIMIT=10000000 pnpm --filter @si/api start
+DATABASE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/sampintel \
+  pnpm --filter @si/api load-test -- --levels 10,50,100 --duration 15
+```
+
+Flags: `--base`, `--users`, `--levels`, `--duration`, `--json`.
