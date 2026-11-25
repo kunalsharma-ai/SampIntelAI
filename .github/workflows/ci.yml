@@ -45,8 +45,8 @@ jobs:
           export SESSION_SECRET=$(openssl rand -hex 32) FIELD_ENCRYPTION_KEY=$(openssl rand -base64 32)
           (cd apps/api && node dist/main.js &)
           cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
-          (cd apps/web && SI_API_URL=http://localhost:4100 node .next/standalone/apps/web/server.js &)
-          npx -y wait-on@9.5.1 http://localhost:4100/api/v1/health http://localhost:3100/login
+          (cd apps/web && PORT=3100 SI_API_URL=http://localhost:4100 node .next/standalone/apps/web/server.js &)
+          npx -y wait-on@9.5.1 --timeout 120000 http://localhost:4100/api/v1/health http://localhost:3100/login
           pnpm --filter @si/web exec playwright install --with-deps chromium
           E2E_PASSWORD=$SI_DEMO_PASSWORD pnpm --filter @si/web e2e
 
