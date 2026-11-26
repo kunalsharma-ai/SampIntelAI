@@ -29,6 +29,7 @@ import { inWindow, stateOf } from './authorizations.js';
 import { FixtureDriver, type Answer, type SurveyDriver } from './fixture-surveys.js';
 import { ModelGateway, ModelUnavailable } from './gateway.js';
 import { BudgetStop, runSession, type ScenarioView } from './runner.js';
+import { workerDuration, workerLastSuccess, workerRuns } from '../metrics.js';
 
 type Job = typeof executionJobs.$inferSelect;
 type Auth = typeof projectAuthorizations.$inferSelect;
@@ -101,6 +102,7 @@ export class QaWorker implements OnModuleInit, OnApplicationShutdown {
   async tick(now = new Date(), onlyTenant?: string) {
     if (this.running && !onlyTenant) return { sessions: 0, jobs: 0 };
     this.running = true;
+    const stop = workerDuration.startTimer();
     try {
       const ts = onlyTenant
         ? [{ id: onlyTenant }]
@@ -112,8 +114,14 @@ export class QaWorker implements OnModuleInit, OnApplicationShutdown {
         sessions += r.sessions;
         jobs += r.jobs;
       }
+      workerRuns.inc({ result: 'ok' });
+      workerLastSuccess.setToCurrentTime();
       return { sessions, jobs };
+    } catch (e) {
+      workerRuns.inc({ result: 'failed' });
+      throw e;
     } finally {
+      stop();
       if (!onlyTenant) this.running = false;
     }
   }

@@ -37,6 +37,11 @@ services:
       DATABASE_URL: postgres://si_api:${SI_API_DB_PASSWORD:?set SI_API_DB_PASSWORD}@postgres:5432/sampintel
       DATABASE_ADMIN_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/sampintel
     ports: ['4100:4100']
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:4100/api/v1/health/ready').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
     depends_on:
       migrate: { condition: service_completed_successfully }
     profiles: ['app']
@@ -47,7 +52,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args: { SI_API_URL: 'http://api:4100' }
     ports: ['3100:3100']
-    depends_on: [api]
+    depends_on: { api: { condition: service_healthy } }
     profiles: ['app']
 
 volumes:
