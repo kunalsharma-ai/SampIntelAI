@@ -64,11 +64,23 @@ interface Op {
   weight: number;
   run: (cookie: string) => Promise<Response>;
 }
+/** Phase 6: a Supply360 service token, issued during setup, for the cross-app summary route. */
+let serviceToken = '';
 const OPS: Op[] = [
-  { name: 'GET /auth/me', weight: 40, run: (c) => fetch(`${BASE}/auth/me`, { headers: { cookie: c } }) },
-  { name: 'GET /users', weight: 20, run: (c) => fetch(`${BASE}/users?limit=50`, { headers: { cookie: c } }) },
-  { name: 'GET /audit', weight: 20, run: (c) => fetch(`${BASE}/audit?limit=50`, { headers: { cookie: c } }) },
-  { name: 'GET /notifications', weight: 15, run: (c) => fetch(`${BASE}/notifications`, { headers: { cookie: c } }) },
+  { name: 'GET /auth/me', weight: 15, run: (c) => fetch(`${BASE}/auth/me`, { headers: { cookie: c } }) },
+  { name: 'GET /users', weight: 10, run: (c) => fetch(`${BASE}/users?limit=50`, { headers: { cookie: c } }) },
+  { name: 'GET /audit', weight: 10, run: (c) => fetch(`${BASE}/audit?limit=50`, { headers: { cookie: c } }) },
+  { name: 'GET /notifications', weight: 10, run: (c) => fetch(`${BASE}/notifications`, { headers: { cookie: c } }) },
+  { name: 'GET /qa/projects', weight: 10, run: (c) => fetch(`${BASE}/qa/projects`, { headers: { cookie: c } }) },
+  { name: 'GET /qa/sessions', weight: 10, run: (c) => fetch(`${BASE}/qa/sessions`, { headers: { cookie: c } }) },
+  { name: 'GET /qa/stats', weight: 10, run: (c) => fetch(`${BASE}/qa/stats`, { headers: { cookie: c } }) },
+  { name: 'GET /qa/jobs', weight: 5, run: (c) => fetch(`${BASE}/qa/jobs`, { headers: { cookie: c } }) },
+  {
+    name: 'GET /integration/qa-summary (token)',
+    weight: 15,
+    run: () =>
+      fetch(`${BASE}/integration/qa-summary?projectRef=PRX10001`, { headers: { authorization: `Bearer ${serviceToken}` } }),
+  },
   {
     name: 'PUT /settings/tenant',
     weight: 5,
@@ -173,6 +185,13 @@ await Promise.all(
   }),
 );
 signInTimes.sort((a, b) => a - b);
+const tok = await fetch(`${BASE}/integration/tokens`, {
+  method: 'POST',
+  headers: { ...csrf, cookie: adminCookie },
+  body: JSON.stringify({ name: 'LOADTEST Supply360', scopes: ['qa_summary.read'], expiresInDays: 1 }),
+});
+if (!tok.ok) throw new Error(`issue token ${tok.status}: ${await tok.text()}`);
+serviceToken = ((await tok.json()) as { token: string }).token;
 
 const results = [];
 for (const c of LEVELS) results.push(await level(c, cookies));

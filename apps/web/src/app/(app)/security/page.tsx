@@ -2,6 +2,8 @@
 import type { UserSummary } from '@si/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle2, CircleDashed } from 'lucide-react';
+import { Table, Td, when } from '@/components/qa/kit';
+import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/page-header';
 import { useCan } from '@/components/session';
 import { Card, CardHeader } from '@/components/ui/card';
@@ -23,13 +25,23 @@ const CONTROLS: { name: string; done: boolean; note: string }[] = [
   { name: 'Single sign-on (OIDC)', done: false, note: 'Planned before production (ADR-010).' },
   {
     name: 'Authorization enforced at worker level',
-    done: false,
-    note: 'Phase 6: scope, expiry, revocation, session caps and budget checked before every step.',
+    done: true,
+    note: 'Scope, expiry, revocation, environment, session cap, window, budget and emergency stop checked before every session.',
   },
   {
     name: 'Outbound URL allowlist',
-    done: false,
-    note: 'Phase 6: QA browsers reach only endpoints named in a valid authorization.',
+    done: true,
+    note: 'The runner opens and follows redirects only to hosts named in an approved authorization; anything else stops the job.',
+  },
+  {
+    name: 'Separation of duties',
+    done: true,
+    note: 'Whoever records a survey-owner authorization can never approve it, whatever their role.',
+  },
+  {
+    name: 'Untrusted survey content',
+    done: true,
+    note: 'Text that tries to instruct a model is flagged and never sent to one; provider keys are sealed and never returned.',
   },
 ];
 
@@ -40,6 +52,11 @@ export default function SecurityPage() {
     queryKey: ['users'],
     queryFn: () => api<{ items: UserSummary[] }>('/users?limit=200'),
     enabled: can && canUsers,
+  });
+  const events = useQuery({
+    queryKey: ['qa', 'security-events'],
+    queryFn: () => api<{ id: string; kind: string; severity: string; detail: Record<string, unknown>; at: string }[]>('/qa/security-events'),
+    enabled: can,
   });
   if (!can) return <NoPermission permission="security.read" />;
   const items = users.data?.items ?? [];
@@ -90,6 +107,25 @@ export default function SecurityPage() {
           )}
         </Card>
       </div>
+      <Card className="mt-6">
+        <CardHeader title="Synthetic QA security events" description="Append-only: challenges, blocked navigation, refused hosts, prompt-injection attempts, budget and emergency stops" />
+        {!events.data?.length ? (
+          <p className="p-5 text-sm text-muted">No events yet.</p>
+        ) : (
+          <Table head={['When', 'Event', 'Severity', 'Detail']}>
+            {events.data.slice(0, 100).map((e) => (
+              <tr key={e.id} data-testid="security-event">
+                <Td className="text-xs whitespace-nowrap">{when(e.at)}</Td>
+                <Td className="text-xs">{e.kind.replaceAll('_', ' ')}</Td>
+                <Td>
+                  <Badge tone={e.severity === 'high' ? 'danger' : 'warning'}>{e.severity}</Badge>
+                </Td>
+                <Td className="font-mono text-[11px] text-muted">{JSON.stringify(e.detail)}</Td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Card>
     </>
   );
 }

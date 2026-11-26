@@ -9,7 +9,9 @@ export function Dialog({
   title,
   description,
   children,
+  wide = false,
 }: {
+  wide?: boolean;
   open: boolean;
   onOpenChange: (o: boolean) => void;
   title: string;
@@ -20,7 +22,7 @@ export function Dialog({
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
         <D.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
-        <D.Content className="fixed top-1/2 left-1/2 z-50 w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-surface p-6 shadow-2xl">
+        <D.Content className={`fixed top-1/2 left-1/2 z-50 max-h-[90vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-2xl ${wide ? 'w-[min(94vw,760px)]' : 'w-[min(92vw,520px)]'}`}>
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <D.Title className="text-base font-semibold">{title}</D.Title>

@@ -18,6 +18,8 @@ const Env = z.object({
   LOGIN_RATE_LIMIT: z.coerce.number().int().min(1).max(10_000).default(10),
   API_RATE_LIMIT: z.coerce.number().int().min(1).max(10_000_000).default(300),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24).default(12),
+  /** Seconds between synthetic QA worker passes; 0 turns the in-process worker off. */
+  QA_TICK_SECONDS: z.coerce.number().int().min(0).max(3600).default(15),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('false')

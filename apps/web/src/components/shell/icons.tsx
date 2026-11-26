@@ -23,11 +23,15 @@ import {
   Users,
   CalendarClock,
   ClipboardList,
+  FolderKanban,
+  Link2,
   type LucideProps,
 } from 'lucide-react';
 
 const MAP: Record<string, (p: LucideProps) => React.ReactNode> = {
   dashboard: LayoutDashboard,
+  'qa-projects': FolderKanban,
+  supply360: Link2,
   authorization: KeyRound,
   samptrek: Network,
   gate: DoorOpen,
