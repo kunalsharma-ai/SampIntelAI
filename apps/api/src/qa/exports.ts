@@ -15,6 +15,7 @@ import {
 } from '@si/db';
 import { and, asc, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
+import ExcelJS from 'exceljs';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { actorOf, AuditService } from '../audit/audit.service.js';
@@ -32,6 +33,35 @@ export function csvCell(v: unknown): string {
 }
 export const csv = (header: string[], rows: unknown[][]) =>
   [header, ...rows].map((r) => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+
+export const EXPORT_FORMATS = ['csv', 'xlsx', 'json'] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+export const SYNTHETIC_NOTICE = 'SYNTHETIC QA DATA: fictional profiles on authorized test surveys. Never human sample, quotas, IR, rewards, invoices or delivery.';
+const safe = (v: unknown) => {
+  const s = v === null || v === undefined ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+  return /^[=+\-@\t\r]/.test(s) ? `'${s}` : s;
+};
+
+/** Every format carries the synthetic notice; Excel cells are text or numbers, never formulas. */
+export async function render(format: ExportFormat, header: string[], rows: unknown[][]): Promise<{ body: Buffer; type: string }> {
+  if (format === 'csv') return { body: Buffer.from(csv(header, rows), 'utf8'), type: 'text/csv; charset=utf-8' };
+  if (format === 'json')
+    return {
+      body: Buffer.from(
+        JSON.stringify({ classification: SYNTHETIC_CLASSIFICATION, notice: SYNTHETIC_NOTICE, rows: rows.map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? null]))) }, null, 2),
+        'utf8',
+      ),
+      type: 'application/json; charset=utf-8',
+    };
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'SampIntel AI';
+  const ws = wb.addWorksheet('Synthetic QA');
+  ws.addRow([SYNTHETIC_NOTICE]).font = { bold: true, color: { argb: 'FFB45309' } };
+  ws.addRow(header).font = { bold: true };
+  for (const r of rows) ws.addRow(r.map((v) => (typeof v === 'number' ? v : safe(v))));
+  ws.views = [{ state: 'frozen', ySplit: 2 }];
+  return { body: Buffer.from(await wb.xlsx.writeBuffer()), type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
+}
 
 const WITHHELD = '[withheld: the authorization does not allow question content in exports]';
 
@@ -63,9 +93,12 @@ export class ExportsController {
     @Ctx() ctx: RequestContext,
     @Param('kind') rawKind: string,
     @Query('projectId') rawProject: string,
+    @Query('format') rawFormat: string | undefined,
     @Res() res: Response,
   ) {
-    const kind = new ZodPipe(z.enum(EXPORT_KINDS)).transform(rawKind.replace(/\.csv$/, ''));
+    const ext = rawKind.match(/\.(csv|xlsx|json)$/)?.[1];
+    const kind = new ZodPipe(z.enum(EXPORT_KINDS)).transform(rawKind.replace(/\.(csv|xlsx|json)$/, ''));
+    const format = new ZodPipe(z.enum(EXPORT_FORMATS)).transform(rawFormat ?? ext ?? 'csv');
     const projectId = new ZodPipe(z.uuid()).transform(rawProject);
     const body = await withTenant(this.db, ctx.tenantId, async (tx) => {
       const [p] = await tx
@@ -81,15 +114,16 @@ export class ExportsController {
         .leftJoin(qualityAssessments, eq(qualityAssessments.sessionId, syntheticSessions.id))
         .where(eq(syntheticSessions.projectId, projectId))
         .orderBy(asc(syntheticSessions.startedAt), asc(syntheticSessions.seq));
-      let out: string;
+      let header: string[];
+      let data: unknown[][];
       let rows: number;
       if (kind === 'sessions') {
-        out = csv(
+        [header, data] = [
           ['project_id', 'project_code', 'session_id', 'classification', 'environment', 'last_stage', 'language', 'started_at', 'ended_at', 'loi_seconds', 'loi_clock', 'ip_risk_score', 'duplicate_ip_observations', 'quality_score', 'quality_findings', 'redirect_url', 'outcome', 'assertions_passed', 'assertions_failed', 'review_status'],
           sessions.map(({ s, risk, dup, score, findings }) => [
             p.p.id, p.p.code, s.id, s.classification, s.environment, s.lastStage, s.language, s.startedAt.toISOString(), s.endedAt.toISOString(), s.loiSeconds, s.clock, risk ?? '', dup ?? '', score ?? '', ((findings as { kind: string }[] | null) ?? []).map((f) => f.kind).join(' '), s.redirectUrl ?? '', s.outcome, s.assertionsPassed, s.assertionsFailed, s.reviewStatus,
           ]),
-        );
+        ];
         rows = sessions.length;
       } else {
         const ids = sessions.map((x) => x.s.id);
@@ -97,23 +131,25 @@ export class ExportsController {
           ? await tx.select().from(surveyQuestionRecords).where(inArray(surveyQuestionRecords.sessionId, ids)).orderBy(asc(surveyQuestionRecords.sessionId), asc(surveyQuestionRecords.seq))
           : [];
         const byId = new Map(sessions.map((x) => [x.s.id, x]));
-        out = csv(
+        [header, data] = [
           ['project_id', 'session_id', 'classification', 'survey_stage', 'question_id', 'question_text', 'question_type', 'answer', 'answered_by', 'language', 'validation', 'flags', 'seconds', 'session_outcome', 'qa_assertions_failed'],
           qs.map((r) => {
             const s = byId.get(r.sessionId)!.s;
             return [p.p.id, r.sessionId, SYNTHETIC_CLASSIFICATION, r.stage, r.questionId, p.content ? r.questionText : WITHHELD, r.detectedType, r.answer, r.answeredBy, r.language, r.validation, r.flags.join(' '), r.seconds, s.outcome, s.assertionsFailed];
           }),
-        );
+        ];
         rows = qs.length;
       }
       await tx.insert(reportExports).values({ tenantId: ctx.tenantId, kind, projectId, rows, questionContent: kind === 'questions' && p.content, createdBy: ctx.userId, createdByEmail: ctx.email });
-      await this.audit.write(tx, actorOf(ctx), { action: 'export.created', targetType: 'qa_project', targetId: projectId, details: { kind, rows } });
-      return { out, code: p.p.code };
+      await this.audit.write(tx, actorOf(ctx), { action: 'export.created', targetType: 'qa_project', targetId: projectId, details: { kind, rows, format } });
+      return { header, data, code: p.p.code };
     });
-    res.setHeader('content-type', 'text/csv; charset=utf-8');
-    res.setHeader('content-disposition', `attachment; filename="SYNTHETIC-${body.code}-${kind}.csv"`);
+    const file = await render(format, body.header, body.data);
+    res.setHeader('content-type', file.type);
+    res.setHeader('content-disposition', `attachment; filename="SYNTHETIC-${body.code}-${kind}.${format}"`);
     res.setHeader('cache-control', 'no-store');
-    res.send(body.out);
+    res.setHeader('x-content-type-options', 'nosniff');
+    res.end(file.body);
   }
 }
 

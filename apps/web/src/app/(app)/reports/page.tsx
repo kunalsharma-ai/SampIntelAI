@@ -1,5 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Download, FileSpreadsheet } from 'lucide-react';
 import { SyntheticBanner, Table, Td, useProjects, when } from '@/components/qa/kit';
 import { PageHeader } from '@/components/page-header';
@@ -7,6 +8,7 @@ import { useCan } from '@/components/session';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader } from '@/components/ui/card';
+import { Select } from '@/components/ui/input';
 import { Empty, Loading, NoPermission } from '@/components/ui/states';
 import { api } from '@/lib/api';
 
@@ -24,6 +26,8 @@ export default function ReportsPage() {
   const can = useCan('reports.read');
   const canExport = useCan('reports.export');
   const projects = useProjects();
+  const [format, setFormat] = useState<'xlsx' | 'csv' | 'json'>('xlsx');
+  const label = { xlsx: 'Excel', csv: 'CSV', json: 'JSON' }[format];
   const history = useQuery({ queryKey: ['qa', 'exports'], queryFn: () => api<ExportRow[]>('/qa/exports'), enabled: can, refetchInterval: 5000 });
   if (!can) return <NoPermission permission="reports.read" />;
   return (
@@ -35,7 +39,16 @@ export default function ReportsPage() {
       />
       <SyntheticBanner>Every file name starts with SYNTHETIC and every row carries the synthetic_qa classification.</SyntheticBanner>
       <Card>
-        <CardHeader title="Export a QA project" />
+        <CardHeader
+          title="Export a QA project"
+          action={
+            <Select aria-label="File format" value={format} onChange={(e) => setFormat(e.target.value as typeof format)} className="w-auto">
+              <option value="xlsx">Excel</option>
+              <option value="csv">CSV</option>
+              <option value="json">JSON</option>
+            </Select>
+          }
+        />
         {projects.isLoading ? (
           <Loading />
         ) : !projects.data?.length ? (
@@ -53,13 +66,13 @@ export default function ReportsPage() {
                   {canExport ? (
                     <>
                       <Button asChild size="sm">
-                        <a href={`/api/v1/qa/exports/sessions.csv?projectId=${p.id}`} download>
-                          <Download /> Sessions CSV
+                        <a href={`/api/v1/qa/exports/sessions.${format}?projectId=${p.id}`} download>
+                          <Download /> Sessions {label}
                         </a>
                       </Button>
                       <Button asChild size="sm">
-                        <a href={`/api/v1/qa/exports/questions.csv?projectId=${p.id}`} download>
-                          <FileSpreadsheet /> Question records CSV
+                        <a href={`/api/v1/qa/exports/questions.${format}?projectId=${p.id}`} download>
+                          <FileSpreadsheet /> Question records {label}
                         </a>
                       </Button>
                     </>
