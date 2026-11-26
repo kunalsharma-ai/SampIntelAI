@@ -232,6 +232,24 @@ describe('execution, results and regression', () => {
     const hist = (await ops.get('/api/v1/qa/exports')).body;
     expect(hist.length).toBeGreaterThanOrEqual(2);
   });
+  it('exports Excel and JSON with the synthetic notice, still withholding wording', async () => {
+    const x = await ops
+      .get(`/api/v1/qa/exports/questions.xlsx?projectId=${pid}`)
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (c: Buffer) => chunks.push(c));
+        res.on('end', () => cb(null, Buffer.concat(chunks)));
+      });
+    expect(x.status).toBe(200);
+    expect(x.headers['content-disposition']).toContain('SYNTHETIC-QA-GROCERY-questions.xlsx');
+    expect((x.body as Buffer).subarray(0, 2).toString()).toBe('PK');
+    const j = await ops.get(`/api/v1/qa/exports/sessions?projectId=${pid}&format=json`);
+    expect(j.body.classification).toBe('synthetic_qa');
+    expect(j.body.notice).toMatch(/^SYNTHETIC QA DATA/);
+    expect(j.body.rows.length).toBeGreaterThan(0);
+    expect((await ops.get(`/api/v1/qa/exports/sessions?projectId=${pid}&format=pdf`)).status).toBe(400);
+  });
 });
 
 describe('stop rules at the worker', () => {

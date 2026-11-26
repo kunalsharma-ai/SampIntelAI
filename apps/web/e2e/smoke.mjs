@@ -260,6 +260,13 @@ const csv = await page.evaluate(async () => {
   return { type: r.headers.get('content-type'), disp: r.headers.get('content-disposition'), text: await r.text() };
 });
 check('question export is a SYNTHETIC CSV with wording withheld', csv.type.startsWith('text/csv') && csv.disp.includes('SYNTHETIC-QA-GROCERY-questions.csv') && csv.text.includes('[withheld:'));
+const xl = await page.evaluate(async () => {
+  const projects = await (await fetch('/api/v1/qa/projects')).json();
+  const r = await fetch(`/api/v1/qa/exports/sessions.xlsx?projectId=${projects[0].id}`);
+  const b = new Uint8Array(await r.arrayBuffer());
+  return { type: r.headers.get('content-type'), disp: r.headers.get('content-disposition'), pk: b[0] === 0x50 && b[1] === 0x4b };
+});
+check('session export also comes as a SYNTHETIC Excel file', xl.pk && xl.type.includes('spreadsheetml') && xl.disp.includes('SYNTHETIC-QA-GROCERY-sessions.xlsx'));
 await page.goto(`${BASE}/reports`);
 await page.getByText('Export history').waitFor();
 await page.getByRole('cell', { name: 'questions' }).first().waitFor();
