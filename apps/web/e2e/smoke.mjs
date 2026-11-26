@@ -28,6 +28,15 @@ const consoleErrors = [];
 page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
 
 async function axe(label) {
+  // Let entrance animations (fade and pop-in) finish, so contrast is measured on what people actually see.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => {})),
+    ),
+  );
   await page.addScriptTag({ content: AXE });
   const r = await page.evaluate(async () => {
     // eslint-disable-next-line no-undef
@@ -94,6 +103,19 @@ await shot('04-users');
 await page.goto(`${BASE}/`);
 await page.getByText('Guardrails').waitFor();
 check('dashboard shows no simulated QA data', await page.getByText('No executions yet').isVisible());
+check(
+  'Adventure Park is the default theme',
+  (await page.evaluate(() => document.documentElement.dataset.theme)) === 'adventure',
+);
+await page.getByRole('tab', { name: /Recent activity/ }).click();
+check('dashboard tabs switch by click', await page.getByRole('tabpanel').getByText('From the audit log').isVisible());
+await page.getByRole('switch', { name: 'Motion effects' }).click();
+check(
+  'motion toggle turns effects off',
+  (await page.evaluate(() => document.documentElement.dataset.motion)) === 'off',
+);
+await page.getByRole('switch', { name: 'Motion effects' }).click();
+await page.getByRole('tab', { name: /QA executions/ }).click();
 await axe('command centre');
 await shot('03-command-centre');
 
@@ -387,7 +409,7 @@ await page.getByText('QA-GROCERY').first().waitFor();
 await shot('32-dashboard-after');
 
 // 8. Themes
-for (const [i, t] of ['arctic', 'violet', 'emerald', 'midnight', 'glass'].entries()) {
+for (const [i, t] of ['arctic', 'violet', 'emerald', 'midnight', 'glass', 'adventure'].entries()) {
   await page.evaluate((id) => localStorage.setItem('si-theme', id), t);
   await page.goto(`${BASE}/`);
   await page.getByText('Guardrails').waitFor();
