@@ -9,6 +9,8 @@ RUN pnpm install --frozen-lockfile --filter @si/api... && pnpm --filter @si/api.
 RUN pnpm --filter @si/api deploy --prod /out && cp -r packages/db/migrations /out/migrations
 
 FROM node:26.13.1-bookworm-slim
+ARG SI_VERSION=dev
+ENV SI_VERSION=$SI_VERSION
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out ./

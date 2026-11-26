@@ -4,7 +4,7 @@ import { aiUsageRecords, apiBudgetLimits, providerConfigurations, type Tx } from
 import { and, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { ENV, type Env } from '../config.js';
-import { Sealer } from '../crypto/sealer.js';
+import { sealerFor, Sealer } from '../crypto/sealer.js';
 import type { PublicQuestion } from './fixture-surveys.js';
 import { unit, type ProfileView } from './recognize.js';
 import { BudgetStop } from './runner.js';
@@ -64,7 +64,7 @@ function fixtureComplete(prompt: { system: string; user: string }, model: string
 export class ModelGateway {
   private readonly sealer: Sealer;
   constructor(@Inject(ENV) env: Env) {
-    this.sealer = new Sealer(env.FIELD_ENCRYPTION_KEY);
+    this.sealer = sealerFor(env);
   }
 
   seal(provider: Provider, tenantId: string, key: string) {

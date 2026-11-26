@@ -11,6 +11,8 @@ ENV SI_API_URL=$SI_API_URL
 RUN pnpm install --frozen-lockfile --filter @si/web... && pnpm --filter @si/web... build
 
 FROM node:26.13.1-bookworm-slim
+ARG SI_VERSION=dev
+ENV SI_VERSION=$SI_VERSION
 ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3100
 WORKDIR /app
 COPY --from=build /repo/apps/web/.next/standalone ./

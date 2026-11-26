@@ -70,3 +70,14 @@ DATABASE_ADMIN_URL=postgres://postgres:postgres@localhost:5432/sampintel \
 ```
 
 Flags: `--base`, `--users`, `--levels`, `--duration`, `--json`.
+
+## Phase 8: production readiness
+
+- **Start-up guards:** with `NODE_ENV=production` the API refuses unsafe settings and lists each one.
+- **Health and metrics:** `/api/v1/health/live`, `/api/v1/health/ready`, Prometheus at `/api/v1/metrics` behind
+  `METRICS_TOKEN`. JSON logs in production.
+- **Web security headers:** per-request nonce Content-Security-Policy (`src/proxy.ts`), HSTS over https.
+- **Data:** `scripts/backup.sh`, `scripts/restore.sh` (empty databases only), field key rotation with
+  `FIELD_ENCRYPTION_KEY_PREVIOUS` and `pnpm --filter @si/api rotate:reseal`.
+- **Release:** a `vX.Y.Z` tag builds images with SBOM and provenance. Nothing deploys automatically.
+- **Docs:** [runbooks](docs/runbooks/README.md) and [production reports](docs/production/readiness-checklist.md).

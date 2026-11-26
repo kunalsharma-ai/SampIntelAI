@@ -10,6 +10,7 @@ import { ProblemFilter } from './common/problem.filter.js';
 import { ENV, type Env } from './config.js';
 import { DbModule } from './db/db.module.js';
 import { HealthController } from './health/health.controller.js';
+import { MetricsController } from './metrics.js';
 import { NotificationsController } from './notifications/notifications.controller.js';
 import { OpenApiController } from './openapi.js';
 import { SettingsController } from './settings/settings.controller.js';
@@ -49,6 +50,7 @@ export class AppModule {
       exports: [ENV],
       controllers: [
         HealthController,
+        MetricsController,
         OpenApiController,
         AuthController,
         UsersController,
