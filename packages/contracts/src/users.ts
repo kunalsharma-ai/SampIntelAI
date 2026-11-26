@@ -51,7 +51,7 @@ export const TenantSettings = z.object({
   displayName: z.string().trim().min(2).max(120),
   timezone: z.string().min(1).max(64),
   locale: z.string().regex(/^[a-z]{2}(-[A-Z]{2})?$/),
-  defaultTheme: z.enum(['glass', 'midnight', 'arctic', 'violet', 'emerald']),
+  defaultTheme: z.enum(['adventure', 'glass', 'midnight', 'arctic', 'violet', 'emerald']),
   /** New workspaces run QA against sandbox and test links only (spec §9). */
   defaultTarget: z.literal('sandbox'),
 });
