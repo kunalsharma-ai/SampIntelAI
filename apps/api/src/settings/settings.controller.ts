@@ -32,7 +32,7 @@ export class SettingsController {
             displayName: ctx.tenantName,
             timezone: 'UTC',
             locale: 'en',
-            defaultTheme: 'violet',
+            defaultTheme: 'glass',
             defaultTarget: 'sandbox',
           };
       return { value, version: row?.version ?? 0 };

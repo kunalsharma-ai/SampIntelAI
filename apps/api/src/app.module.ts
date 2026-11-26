@@ -15,6 +15,13 @@ import { OpenApiController } from './openapi.js';
 import { SettingsController } from './settings/settings.controller.js';
 import { UsersController } from './users/users.controller.js';
 import { UsersService } from './users/users.service.js';
+import { AiController } from './qa/ai.controller.js';
+import { AuthorizationsController, AuthorizationsService } from './qa/authorizations.js';
+import { ExportsController, IntegrationController } from './qa/exports.js';
+import { ModelGateway } from './qa/gateway.js';
+import { QaController } from './qa/qa.controller.js';
+import { QaService } from './qa/qa.service.js';
+import { QaWorker } from './qa/worker.js';
 
 @Module({})
 export class AppModule {
@@ -31,6 +38,10 @@ export class AppModule {
         AuditService,
         AuthService,
         UsersService,
+        AuthorizationsService,
+        QaService,
+        ModelGateway,
+        QaWorker,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: APP_GUARD, useClass: SessionGuard },
         { provide: APP_FILTER, useClass: ProblemFilter },
@@ -44,6 +55,11 @@ export class AppModule {
         AuditController,
         SettingsController,
         NotificationsController,
+        AuthorizationsController,
+        QaController,
+        AiController,
+        ExportsController,
+        IntegrationController,
       ],
     };
   }

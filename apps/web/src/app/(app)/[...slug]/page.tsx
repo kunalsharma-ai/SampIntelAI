@@ -6,7 +6,7 @@ import { useCan } from '@/components/session';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardBody } from '@/components/ui/card';
 import { NoPermission } from '@/components/ui/states';
-import { MODULES } from '@/lib/modules';
+import { CURRENT_PHASE, MODULES } from '@/lib/modules';
 
 const PHASES = [
   'Foundations',
@@ -47,7 +47,7 @@ export default function PlannedModule() {
           <ol className="flex-1 space-y-1.5" aria-label="Delivery phases">
             {PHASES.map((p, i) => (
               <li key={p} className="flex items-center gap-2 text-sm">
-                {i + 1 < 2 ? (
+                {i + 1 <= CURRENT_PHASE ? (
                   <CheckCircle2 className="size-4 text-success" />
                 ) : (
                   <CircleDashed className={i + 1 === m.phase ? 'size-4 text-accent' : 'size-4 text-muted/60'} />

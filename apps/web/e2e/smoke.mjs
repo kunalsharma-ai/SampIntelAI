@@ -122,13 +122,184 @@ await page.goto(`${BASE}/security`);
 await page.getByText('Controls').first().waitFor();
 await axe('security');
 await shot('07-security');
+// 7b. Phase 6: authorized synthetic QA, end to end on the sandbox fixtures (DEMO seed)
+const toastGone = async () => {
+  await page.mouse.move(5, 5);
+  await page.waitForTimeout(300);
+};
 await page.goto(`${BASE}/authorizations`);
-await page.getByText('Arrives in Phase 6').waitFor();
-check('a module not built yet shows its phase, not a mock', true);
-await shot('08-planned-module');
+await page.getByRole('heading', { name: 'Authorization Centre' }).waitFor();
+await page.locator('[data-testid=auth-row]').first().waitFor();
+check('authorization centre lists the DEMO authorizations', (await page.locator('[data-testid=auth-row]').count()) === 2);
+const pendingRow = page.locator('[data-testid=auth-row]', { hasText: 'DEMO Retail Insights GmbH' });
+await pendingRow.getByRole('button', { name: 'Approve' }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Approve' }).click();
+await pendingRow.getByText('approved', { exact: true }).waitFor();
+check('a pending authorization recorded by someone else can be approved', true);
+await page.getByRole('button', { name: 'Record authorization' }).click();
+await page.fill('#a-owner', 'DEMO Owner Recorded In E2E');
+await page.getByRole('dialog').getByRole('button', { name: 'Record for approval' }).click();
+const mine = page.locator('[data-testid=auth-row]', { hasText: 'DEMO Owner Recorded In E2E' });
+await mine.waitFor();
+check('separation of duties: no approve button on my own request', (await mine.getByRole('button', { name: 'Approve' }).count()) === 0 && (await mine.getByText('Waiting for someone else to decide').isVisible()));
+await toastGone();
+await axe('authorization centre');
+await shot('11-authorizations');
+
+await page.goto(`${BASE}/qa-projects`);
+await page.locator('[data-testid=scenario-row]').first().waitFor();
+check('QA project and its DEMO scenarios are listed', (await page.locator('[data-testid=scenario-row]').count()) === 6);
+await page.getByRole('button', { name: 'Add scenario' }).click();
+await page.fill('#s-name', 'German profile, localization');
+await page.selectOption('#s-profile', { label: 'Fictional profile FP-03: 41, Germany, German-language' });
+await page.selectOption('#s-language', 'de');
+await page.getByRole('dialog').getByRole('button', { name: 'Save scenario' }).click();
+await page.getByText('German profile, localization').waitFor();
+check('a scenario can be added in the scenario editor', (await page.locator('[data-testid=scenario-row]').count()) === 7);
+await toastGone();
+await axe('QA projects');
+await shot('12-qa-projects');
+
+await page.goto(`${BASE}/executions`);
+await page.getByRole('heading', { name: 'AI Execution Engine' }).waitFor();
+await page.getByRole('button', { name: 'Queue job' }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Select all' }).click();
+await page.fill('#j-n', '2');
+await page.getByRole('dialog').getByRole('button', { name: 'Queue' }).click();
+await page.locator('[data-testid=job-row]').first().waitFor();
+await toastGone();
+await page.getByRole('button', { name: 'Run worker pass now' }).click();
+await page.getByText('Worker pass: 10 sessions').waitFor();
+await page.getByRole('button', { name: 'Run worker pass now' }).click();
+await page.getByText('Worker pass: 4 sessions').waitFor();
+await page.locator('[data-testid=job-row]', { hasText: '14 / 14 sessions' }).waitFor();
+check('a job of 14 synthetic sessions runs to the end', true);
+await toastGone();
+await axe('execution engine');
+await shot('13-executions');
+
+await page.goto(`${BASE}/response-audit`);
+await page.locator('[data-testid=session-row]').first().waitFor();
+check('response audit lists 14 sessions', (await page.locator('[data-testid=session-row]').count()) === 14);
+await shot('14-response-audit');
+await page.locator('[data-testid=session-row]', { hasText: 'Age range check fires' }).first().getByRole('link').click();
+await page.locator('[data-testid=question-row]').first().waitFor();
+check('the range check is shown rejected, then answered', (await page.getByText('rejected:Enter a number from 1 to 120').count()) === 1);
+check('assertions are listed per session', (await page.locator('[data-testid=assertion]').count()) >= 3);
+await axe('session detail');
+await shot('15-session-detail');
+
+await page.goto(`${BASE}/qa-projects`);
+await page.getByRole('button', { name: 'Change links' }).click();
+await page.selectOption('#v-client', { index: 1 });
+await page.getByRole('dialog').getByRole('button', { name: 'Save links' }).click();
+await page.getByText('/s/grocery-client/v2').waitFor();
+await toastGone();
+await page.goto(`${BASE}/executions`);
+await page.getByRole('button', { name: 'Queue job' }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Select all' }).click();
+await page.fill('#j-n', '1');
+await page.getByRole('dialog').getByRole('button', { name: 'Queue' }).click();
+await page.getByText('Job queued: 7 synthetic sessions').waitFor();
+await toastGone();
+await page.getByRole('button', { name: 'Run worker pass now' }).click();
+await page.getByText('Worker pass: 7 sessions').waitFor();
+await toastGone();
+
+await page.goto(`${BASE}/quality`);
+await page.locator('[data-testid=regression-row]').first().waitFor();
+const changed = page.locator('[data-testid=regression-row]', { hasText: '45 to 54 completes' });
+check('regression shows 45 to 54 moving from complete to quota full on v2', (await changed.getByText('Quota full').count()) === 1 && (await changed.getByText('changed').count()) === 1);
+check('regression shows the question added in v2', (await page.getByText('client:C8').count()) >= 1);
+await axe('quality control');
+await shot('16-quality-regression');
+
+for (const [path, heading, name] of [
+  ['/gate-surveys', 'Gate Survey Manager', '17-gate-surveys'],
+  ['/client-surveys', 'Client Survey Manager', '18-client-surveys'],
+  ['/synthetic', 'Synthetic Data Engine', '19-synthetic'],
+  ['/ir', 'IR Management', '20-ir'],
+  ['/loi', 'LOI Monitoring', '21-loi'],
+  ['/ip-intelligence', 'IP Intelligence', '22-ip'],
+  ['/schedule', 'Scheduling Engine', '23-schedule'],
+  ['/intervals', 'Interval Controller', '24-intervals'],
+  ['/integrations/samptrek', 'Samptrek Integration', '25-samptrek'],
+]) {
+  await page.goto(`${BASE}${path}`);
+  await page.getByRole('heading', { name: heading }).waitFor();
+  await page.waitForLoadState('networkidle');
+  await axe(heading);
+  await shot(name);
+}
+check('client survey manager flags the injection text', (await (async () => { await page.goto(`${BASE}/client-surveys`); await page.getByText('prompt injection suspected').first().waitFor(); return true; })()));
+await page.goto(`${BASE}/ir`);
+await page.getByText('Not human IR').first().waitFor();
+check('IR is labelled synthetic, not human', true);
+
+await page.goto(`${BASE}/providers`);
+await page.locator('[data-testid=provider-fixture]').waitFor();
+await page.locator('[data-testid=provider-fixture]').getByLabel('Use this provider for model answers (turns the others off)').check();
+await page.locator('[data-testid=provider-fixture]').getByRole('button', { name: 'Save' }).click();
+await page.locator('[data-testid=provider-fixture]').getByText('Answering').waitFor();
+check('the FIXTURE provider can be turned on', true);
+await toastGone();
+await axe('AI API management');
+await shot('26-providers');
+await page.goto(`${BASE}/budgets`);
+await page.getByRole('button', { name: 'Set budget' }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+await page.locator('[data-testid=budget-row]').waitFor();
+check('a workspace budget can be set', true);
+await toastGone();
+await axe('budgets');
+await shot('27-budgets');
+
+const csv = await page.evaluate(async () => {
+  const projects = await (await fetch('/api/v1/qa/projects')).json();
+  const r = await fetch(`/api/v1/qa/exports/questions.csv?projectId=${projects[0].id}`);
+  return { type: r.headers.get('content-type'), disp: r.headers.get('content-disposition'), text: await r.text() };
+});
+check('question export is a SYNTHETIC CSV with wording withheld', csv.type.startsWith('text/csv') && csv.disp.includes('SYNTHETIC-QA-GROCERY-questions.csv') && csv.text.includes('[withheld:'));
+await page.goto(`${BASE}/reports`);
+await page.getByText('Export history').waitFor();
+await page.getByRole('cell', { name: 'questions' }).first().waitFor();
+await axe('reports');
+await shot('28-reports');
+
+await page.goto(`${BASE}/integrations/supply360`);
+await page.getByRole('button', { name: 'Issue token' }).click();
+await page.getByRole('dialog').getByRole('button', { name: 'Issue' }).click();
+const token = (await page.locator('[data-testid=new-token]').textContent()).trim();
+check('a Supply360 service token is shown once', token.startsWith('sik.'));
+await page.keyboard.press('Escape');
+const summary = await page.evaluate(async (t) => (await fetch('/api/v1/integration/qa-summary?projectRef=PRX10001', { headers: { authorization: `Bearer ${t}` } })).json(), token);
+check('the token reads a synthetic-only summary', summary.classification === 'synthetic_qa' && summary.sessions === 21);
+await axe('Supply360 link');
+await shot('29-supply360-link');
+
+await page.goto(`${BASE}/executions`);
+await page.getByRole('button', { name: 'Emergency stop' }).click();
+await page.fill('#k-reason', 'DEMO drill');
+await page.getByRole('dialog').getByRole('button', { name: 'Stop everything' }).click();
+await page.getByText('Emergency stop is on').waitFor();
+check('the emergency stop turns on and blocks queueing', await page.getByRole('button', { name: 'Queue job' }).isDisabled());
+await toastGone();
+await shot('30-emergency-stop');
+await page.getByRole('button', { name: 'Clear emergency stop' }).click();
+await page.fill('#k-reason', 'DEMO drill over');
+await page.getByRole('dialog').getByRole('button', { name: 'Clear' }).click();
+await page.getByText('Emergency stop is off').waitFor();
+await page.goto(`${BASE}/security`);
+await page.locator('[data-testid=security-event]').first().waitFor();
+check('security centre shows the stop and the injection attempt', (await page.getByText('emergency stop', { exact: true }).count()) >= 1 && (await page.getByText('prompt injection suspected').count()) >= 1);
+await shot('31-security-events');
+await page.goto(`${BASE}/`);
+await page.getByText('Guardrails').waitFor();
+await page.getByText('QA-GROCERY').first().waitFor();
+await shot('32-dashboard-after');
 
 // 8. Themes
-for (const [i, t] of ['arctic', 'violet', 'emerald', 'midnight'].entries()) {
+for (const [i, t] of ['arctic', 'violet', 'emerald', 'midnight', 'glass'].entries()) {
   await page.evaluate((id) => localStorage.setItem('si-theme', id), t);
   await page.goto(`${BASE}/`);
   await page.getByText('Guardrails').waitFor();
