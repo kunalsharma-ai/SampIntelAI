@@ -466,7 +466,14 @@ export const providerConfigurations = pgTable(
   {
     id: id(),
     tenantId: tenantId(),
+    /** The tenant's connection id, such as "groq" or "claude-prod". Usage records carry it as their provider. */
     provider: text('provider').notNull(),
+    /** Which API the connection speaks: fixture, anthropic, openai, gemini or openai_compatible. */
+    kind: text('kind').notNull().default('fixture'),
+    label: text('label').notNull().default(''),
+    /** https only; checked to be a public host before every call. */
+    baseUrl: text('base_url'),
+    authStyle: text('auth_style').notNull().default('bearer'),
     model: text('model').notNull(),
     sealedKey: text('sealed_key'),
     enabled: boolean('enabled').notNull().default(false),

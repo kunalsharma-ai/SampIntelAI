@@ -23,4 +23,5 @@ through [../runbooks/deployment.md](../runbooks/deployment.md).
 | Performance | Load checks every phase; numbers in performance.md | Done |
 | Accessibility | axe (WCAG 2.0 A/AA, 2.2 AA) on 17 page states in the browser checks | Done |
 | Accessibility | Manual screen reader and contrast pass | Needs owner |
-| Integrations | Live survey drivers and live model providers | Not built: only the FIXTURE sandbox survey and FIXTURE provider exist |
+| Integrations | Live survey drivers | Not built: only the FIXTURE sandbox survey exists |
+| Integrations | Live model providers | Built: any AI can be added from AI API Management (Claude, OpenAI, Gemini, any OpenAI-compatible API). Before production, add a real key, run Test, and set budgets |
