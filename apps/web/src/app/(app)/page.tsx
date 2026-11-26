@@ -187,7 +187,7 @@ export default function Dashboard() {
   });
   const providers = useQuery({
     queryKey: ['ai', 'providers'],
-    queryFn: () => api<{ provider: string; enabled: boolean; model: string }[]>('/ai/providers'),
+    queryFn: () => api<{ label: string; enabled: boolean; model: string }[]>('/ai/providers'),
   });
   const usage = useQuery({
     queryKey: ['ai', 'usage'],
@@ -265,7 +265,7 @@ export default function Dashboard() {
     {
       name: 'AI providers',
       icon: Cpu,
-      badge: on ? <Badge tone="success">{on.provider}</Badge> : <Badge>None answering</Badge>,
+      badge: on ? <Badge tone="success">{on.label}</Badge> : <Badge>None answering</Badge>,
       note: 'FIXTURE answers sandbox runs. Claude, OpenAI and Gemini can be configured; live calls stay off until a key is added and approved.',
     },
   ];
@@ -315,7 +315,7 @@ export default function Dashboard() {
         <Stat
           label="Model spend, 30 days"
           value={`$${spend.toFixed(spend < 1 ? 4 : 2)}`}
-          hint={on ? `Answering: ${on.provider} (${on.model})` : 'No provider answering; rules only'}
+          hint={on ? `Answering: ${on.label} (${on.model})` : 'No provider answering; rules only'}
           icon={PiggyBank}
           tint="sun"
           delay={160}
