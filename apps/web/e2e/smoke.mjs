@@ -53,7 +53,10 @@ await page.goto(`${BASE}/users`);
 await page.waitForURL(/\/login/);
 check('signed-out visit redirects to /login with next', page.url().includes('next=%2Fusers'));
 const csp = (await page.request.get(`${BASE}/login`)).headers()['content-security-policy'] ?? '';
-check('pages carry a nonce-based Content-Security-Policy', /script-src 'self' 'nonce-[^']+' 'strict-dynamic'/.test(csp) && csp.includes("frame-ancestors 'none'"));
+check(
+  'pages carry a nonce-based Content-Security-Policy',
+  /script-src 'self' 'nonce-[^']+' 'strict-dynamic'/.test(csp) && csp.includes("frame-ancestors 'none'"),
+);
 await axe('sign-in');
 await shot('01-login');
 
@@ -134,7 +137,10 @@ const toastGone = async () => {
 await page.goto(`${BASE}/authorizations`);
 await page.getByRole('heading', { name: 'Authorization Centre' }).waitFor();
 await page.locator('[data-testid=auth-row]').first().waitFor();
-check('authorization centre lists the DEMO authorizations', (await page.locator('[data-testid=auth-row]').count()) === 2);
+check(
+  'authorization centre lists the DEMO authorizations',
+  (await page.locator('[data-testid=auth-row]').count()) === 2,
+);
 const pendingRow = page.locator('[data-testid=auth-row]', { hasText: 'DEMO Retail Insights GmbH' });
 await pendingRow.getByRole('button', { name: 'Approve' }).click();
 await page.getByRole('dialog').getByRole('button', { name: 'Approve' }).click();
@@ -145,7 +151,11 @@ await page.fill('#a-owner', 'DEMO Owner Recorded In E2E');
 await page.getByRole('dialog').getByRole('button', { name: 'Record for approval' }).click();
 const mine = page.locator('[data-testid=auth-row]', { hasText: 'DEMO Owner Recorded In E2E' });
 await mine.waitFor();
-check('separation of duties: no approve button on my own request', (await mine.getByRole('button', { name: 'Approve' }).count()) === 0 && (await mine.getByText('Waiting for someone else to decide').isVisible()));
+check(
+  'separation of duties: no approve button on my own request',
+  (await mine.getByRole('button', { name: 'Approve' }).count()) === 0 &&
+    (await mine.getByText('Waiting for someone else to decide').isVisible()),
+);
 await toastGone();
 await axe('authorization centre');
 await shot('11-authorizations');
@@ -159,7 +169,10 @@ await page.selectOption('#s-profile', { label: 'Fictional profile FP-03: 41, Ger
 await page.selectOption('#s-language', 'de');
 await page.getByRole('dialog').getByRole('button', { name: 'Save scenario' }).click();
 await page.getByText('German profile, localization').waitFor();
-check('a scenario can be added in the scenario editor', (await page.locator('[data-testid=scenario-row]').count()) === 7);
+check(
+  'a scenario can be added in the scenario editor',
+  (await page.locator('[data-testid=scenario-row]').count()) === 7,
+);
 await toastGone();
 await axe('QA projects');
 await shot('12-qa-projects');
@@ -188,7 +201,10 @@ check('response audit lists 14 sessions', (await page.locator('[data-testid=sess
 await shot('14-response-audit');
 await page.locator('[data-testid=session-row]', { hasText: 'Age range check fires' }).first().getByRole('link').click();
 await page.locator('[data-testid=question-row]').first().waitFor();
-check('the range check is shown rejected, then answered', (await page.getByText('rejected:Enter a number from 1 to 120').count()) === 1);
+check(
+  'the range check is shown rejected, then answered',
+  (await page.getByText('rejected:Enter a number from 1 to 120').count()) === 1,
+);
 check('assertions are listed per session', (await page.locator('[data-testid=assertion]').count()) >= 3);
 await axe('session detail');
 await shot('15-session-detail');
@@ -213,7 +229,10 @@ await toastGone();
 await page.goto(`${BASE}/quality`);
 await page.locator('[data-testid=regression-row]').first().waitFor();
 const changed = page.locator('[data-testid=regression-row]', { hasText: '45 to 54 completes' });
-check('regression shows 45 to 54 moving from complete to quota full on v2', (await changed.getByText('Quota full').count()) === 1 && (await changed.getByText('changed').count()) === 1);
+check(
+  'regression shows 45 to 54 moving from complete to quota full on v2',
+  (await changed.getByText('Quota full').count()) === 1 && (await changed.getByText('changed').count()) === 1,
+);
 check('regression shows the question added in v2', (await page.getByText('client:C8').count()) >= 1);
 await axe('quality control');
 await shot('16-quality-regression');
@@ -235,20 +254,53 @@ for (const [path, heading, name] of [
   await axe(heading);
   await shot(name);
 }
-check('client survey manager flags the injection text', (await (async () => { await page.goto(`${BASE}/client-surveys`); await page.getByText('prompt injection suspected').first().waitFor(); return true; })()));
+check(
+  'client survey manager flags the injection text',
+  await (async () => {
+    await page.goto(`${BASE}/client-surveys`);
+    await page.getByText('prompt injection suspected').first().waitFor();
+    return true;
+  })(),
+);
 await page.goto(`${BASE}/ir`);
 await page.getByText('Not human IR').first().waitFor();
 check('IR is labelled synthetic, not human', true);
 
 await page.goto(`${BASE}/providers`);
 await page.locator('[data-testid=provider-fixture]').waitFor();
-await page.locator('[data-testid=provider-fixture]').getByLabel('Use this provider for model answers (turns the others off)').check();
-await page.locator('[data-testid=provider-fixture]').getByRole('button', { name: 'Save' }).click();
-await page.locator('[data-testid=provider-fixture]').getByText('Answering').waitFor();
+const fx = page.locator('[data-testid=provider-fixture]');
+await fx.getByLabel('Use this AI for model answers (turns the others off)').check();
+await fx.getByRole('button', { name: 'Save' }).click();
+await fx.getByText('Answering').waitFor();
 check('the FIXTURE provider can be turned on', true);
+await fx.getByRole('button', { name: 'Test' }).click();
+await fx.locator('[data-testid=test-result]').getByText('Working.').waitFor();
+check('a saved AI connection can be tested from the screen', true);
 await toastGone();
 await axe('AI API management');
 await shot('26-providers');
+await page.getByRole('button', { name: 'Add AI' }).click();
+await page.locator('[data-testid=ai-presets]').getByText('Free tier').first().waitFor();
+await axe('add AI presets');
+await shot('26b-add-ai');
+await page.locator('[data-testid=ai-presets]').getByRole('button', { name: /Groq/ }).click();
+const dlg = page.getByRole('dialog');
+await dlg.getByLabel('API key').fill('gsk-e2e-not-a-real-key');
+await dlg.getByLabel('Model', { exact: true }).fill('an-open-model');
+await shot('26c-add-groq');
+await dlg.getByRole('button', { name: 'Add AI' }).click();
+const groq = page.locator('[data-testid=provider-groq]');
+await groq.waitFor();
+check(
+  'a free-tier AI can be added from the screen without a developer',
+  (await groq.getByText('at api.groq.com').count()) === 1,
+);
+check('the stored key is never shown again', !(await page.content()).includes('gsk-e2e'));
+await toastGone();
+await groq.getByRole('button', { name: 'Remove Groq' }).click();
+await groq.waitFor({ state: 'detached' });
+check('an added AI can be removed', true);
+await toastGone();
 await page.goto(`${BASE}/budgets`);
 await page.getByRole('button', { name: 'Set budget' }).click();
 await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
@@ -263,14 +315,26 @@ const csv = await page.evaluate(async () => {
   const r = await fetch(`/api/v1/qa/exports/questions.csv?projectId=${projects[0].id}`);
   return { type: r.headers.get('content-type'), disp: r.headers.get('content-disposition'), text: await r.text() };
 });
-check('question export is a SYNTHETIC CSV with wording withheld', csv.type.startsWith('text/csv') && csv.disp.includes('SYNTHETIC-QA-GROCERY-questions.csv') && csv.text.includes('[withheld:'));
+check(
+  'question export is a SYNTHETIC CSV with wording withheld',
+  csv.type.startsWith('text/csv') &&
+    csv.disp.includes('SYNTHETIC-QA-GROCERY-questions.csv') &&
+    csv.text.includes('[withheld:'),
+);
 const xl = await page.evaluate(async () => {
   const projects = await (await fetch('/api/v1/qa/projects')).json();
   const r = await fetch(`/api/v1/qa/exports/sessions.xlsx?projectId=${projects[0].id}`);
   const b = new Uint8Array(await r.arrayBuffer());
-  return { type: r.headers.get('content-type'), disp: r.headers.get('content-disposition'), pk: b[0] === 0x50 && b[1] === 0x4b };
+  return {
+    type: r.headers.get('content-type'),
+    disp: r.headers.get('content-disposition'),
+    pk: b[0] === 0x50 && b[1] === 0x4b,
+  };
 });
-check('session export also comes as a SYNTHETIC Excel file', xl.pk && xl.type.includes('spreadsheetml') && xl.disp.includes('SYNTHETIC-QA-GROCERY-sessions.xlsx'));
+check(
+  'session export also comes as a SYNTHETIC Excel file',
+  xl.pk && xl.type.includes('spreadsheetml') && xl.disp.includes('SYNTHETIC-QA-GROCERY-sessions.xlsx'),
+);
 await page.goto(`${BASE}/reports`);
 await page.getByText('Export history').waitFor();
 await page.getByRole('cell', { name: 'questions' }).first().waitFor();
@@ -283,7 +347,13 @@ await page.getByRole('dialog').getByRole('button', { name: 'Issue' }).click();
 const token = (await page.locator('[data-testid=new-token]').textContent()).trim();
 check('a Supply360 service token is shown once', token.startsWith('sik.'));
 await page.keyboard.press('Escape');
-const summary = await page.evaluate(async (t) => (await fetch('/api/v1/integration/qa-summary?projectRef=PRX10001', { headers: { authorization: `Bearer ${t}` } })).json(), token);
+const summary = await page.evaluate(
+  async (t) =>
+    (
+      await fetch('/api/v1/integration/qa-summary?projectRef=PRX10001', { headers: { authorization: `Bearer ${t}` } })
+    ).json(),
+  token,
+);
 check('the token reads a synthetic-only summary', summary.classification === 'synthetic_qa' && summary.sessions === 21);
 await axe('Supply360 link');
 await shot('29-supply360-link');
@@ -293,7 +363,10 @@ await page.getByRole('button', { name: 'Emergency stop' }).click();
 await page.fill('#k-reason', 'DEMO drill');
 await page.getByRole('dialog').getByRole('button', { name: 'Stop everything' }).click();
 await page.getByText('Emergency stop is on').waitFor();
-check('the emergency stop turns on and blocks queueing', await page.getByRole('button', { name: 'Queue job' }).isDisabled());
+check(
+  'the emergency stop turns on and blocks queueing',
+  await page.getByRole('button', { name: 'Queue job' }).isDisabled(),
+);
 await toastGone();
 await shot('30-emergency-stop');
 await page.getByRole('button', { name: 'Clear emergency stop' }).click();
@@ -302,7 +375,11 @@ await page.getByRole('dialog').getByRole('button', { name: 'Clear' }).click();
 await page.getByText('Emergency stop is off').waitFor();
 await page.goto(`${BASE}/security`);
 await page.locator('[data-testid=security-event]').first().waitFor();
-check('security centre shows the stop and the injection attempt', (await page.getByText('emergency stop', { exact: true }).count()) >= 1 && (await page.getByText('prompt injection suspected').count()) >= 1);
+check(
+  'security centre shows the stop and the injection attempt',
+  (await page.getByText('emergency stop', { exact: true }).count()) >= 1 &&
+    (await page.getByText('prompt injection suspected').count()) >= 1,
+);
 await shot('31-security-events');
 await page.goto(`${BASE}/`);
 await page.getByText('Guardrails').waitFor();

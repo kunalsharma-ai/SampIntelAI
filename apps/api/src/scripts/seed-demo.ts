@@ -99,7 +99,14 @@ await db.insert(projectAuthorizations).values({
 });
 const profiles = await db
   .insert(syntheticProfiles)
-  .values(PROFILE_LIBRARY.map((p) => ({ tenantId, ...p, attributes: p.attributes as Record<string, unknown>, builtin: true })))
+  .values(
+    PROFILE_LIBRARY.map((p) => ({
+      tenantId,
+      ...p,
+      attributes: p.attributes as Record<string, unknown>,
+      builtin: true,
+    })),
+  )
   .returning();
 const pid = (c: string) => profiles.find((p) => p.code === c)!.id;
 const [project] = await db
@@ -144,6 +151,8 @@ await db.insert(qaScenarios).values(
 await db.insert(providerConfigurations).values({
   tenantId,
   provider: 'fixture',
+  kind: 'fixture',
+  label: 'FIXTURE',
   model: 'fixture-answerer',
   enabled: false,
   timeoutMs: 5000,

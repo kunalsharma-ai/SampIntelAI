@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Provider } from '@si/contracts';
 import { aiUsageRecords, apiBudgetLimits, providerConfigurations, type Tx } from '@si/db';
 import { and, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { ENV, type Env } from '../config.js';
 import { sealerFor, Sealer } from '../crypto/sealer.js';
 import type { PublicQuestion } from './fixture-surveys.js';
+import { complete, extractJson, ModelUnavailable, type Completion, type Connection, type Prompt } from './providers.js';
 import { unit, type ProfileView } from './recognize.js';
 import { BudgetStop } from './runner.js';
 
@@ -25,11 +25,8 @@ export interface CallContext {
   sessionId: string | null;
 }
 
-export class ModelUnavailable extends Error {
-  constructor(readonly reason: string) {
-    super(reason);
-  }
-}
+export { ModelUnavailable };
+type Config = typeof providerConfigurations.$inferSelect;
 
 export function buildPrompt(q: PublicQuestion, p: ProfileView) {
   return {
@@ -57,6 +54,8 @@ function fixtureComplete(prompt: { system: string; user: string }, model: string
   return {
     text: JSON.stringify({ answer: lines[Math.floor(r * lines.length)], confidence: 0.6 + r * 0.3 }),
     modelVersion: `${model}@fixture-1`,
+    inputTokens: null,
+    outputTokens: null,
   };
 }
 
@@ -67,8 +66,23 @@ export class ModelGateway {
     this.sealer = sealerFor(env);
   }
 
-  seal(provider: Provider, tenantId: string, key: string) {
-    return this.sealer.seal(key, `provider:${tenantId}:${provider}`);
+  /** The seal is bound to the tenant and the connection id, so a sealed key cannot be moved to another row. */
+  seal(connection: string, tenantId: string, key: string) {
+    return this.sealer.seal(key, `provider:${tenantId}:${connection}`);
+  }
+
+  /** The connection as the adapters need it, with the key opened only for the length of the call. */
+  connection(cfg: Config, apiKey?: string): Connection {
+    return {
+      kind: cfg.kind as Connection['kind'],
+      baseUrl: cfg.baseUrl,
+      authStyle: cfg.authStyle as Connection['authStyle'],
+      model: cfg.model,
+      apiKey:
+        apiKey ?? (cfg.sealedKey ? this.sealer.open(cfg.sealedKey, `provider:${cfg.tenantId}:${cfg.provider}`) : null),
+      timeoutMs: cfg.timeoutMs,
+      maxOutputTokens: cfg.maxOutputTokens,
+    };
   }
 
   /** Spend so far in each budget that covers this call, against its limit. */
@@ -76,7 +90,11 @@ export class ModelGateway {
     const limits = await tx
       .select()
       .from(apiBudgetLimits)
-      .where(projectId ? or(isNull(apiBudgetLimits.projectId), eq(apiBudgetLimits.projectId, projectId)) : isNull(apiBudgetLimits.projectId));
+      .where(
+        projectId
+          ? or(isNull(apiBudgetLimits.projectId), eq(apiBudgetLimits.projectId, projectId))
+          : isNull(apiBudgetLimits.projectId),
+      );
     const now = new Date();
     const out = [];
     for (const l of limits) {
@@ -87,72 +105,166 @@ export class ModelGateway {
       const [row] = await tx
         .select({ spent: sql<string>`coalesce(sum(${aiUsageRecords.costMicros}), 0)` })
         .from(aiUsageRecords)
-        .where(
-          and(
-            gte(aiUsageRecords.at, from),
-            l.projectId ? eq(aiUsageRecords.projectId, l.projectId) : undefined,
-          ),
-        );
-      out.push({ id: l.id, scope: l.scope, projectId: l.projectId, period: l.period, limitMicros: l.limitMicros, spentMicros: Number(row?.spent ?? 0), from });
+        .where(and(gte(aiUsageRecords.at, from), l.projectId ? eq(aiUsageRecords.projectId, l.projectId) : undefined));
+      out.push({
+        id: l.id,
+        scope: l.scope,
+        projectId: l.projectId,
+        period: l.period,
+        limitMicros: l.limitMicros,
+        spentMicros: Number(row?.spent ?? 0),
+        from,
+      });
     }
     return out;
   }
 
-  async answer(tx: Tx, ctx: CallContext, q: PublicQuestion, p: ProfileView) {
-    const [cfg] = await tx.select().from(providerConfigurations).where(eq(providerConfigurations.enabled, true)).limit(1);
-    if (!cfg) throw new ModelUnavailable('no_enabled_provider');
-    const prompt = buildPrompt(q, p);
-    const inTok = est(prompt.system) + est(prompt.user);
-    const worst = Math.ceil((inTok * cfg.priceInputMicros + cfg.maxOutputTokens * cfg.priceOutputMicros) / 1_000_000);
-    for (const b of await this.budgets(tx, ctx.projectId)) {
-      if (b.spentMicros + worst > b.limitMicros) {
-        await tx.insert(aiUsageRecords).values({
-          tenantId: ctx.tenantId,
-          projectId: ctx.projectId,
-          jobId: ctx.jobId,
-          sessionId: ctx.sessionId,
-          provider: cfg.provider,
-          model: cfg.model,
-          purpose: 'answer_open_question',
-          inputTokens: 0,
-          outputTokens: 0,
-          costMicros: 0,
-          latencyMs: 0,
-          status: 'refused_budget',
-        });
-        throw new BudgetStop();
-      }
-    }
-    const started = Date.now();
-    let text: string;
-    let modelVersion: string;
-    if (cfg.provider === 'fixture') {
-      ({ text, modelVersion } = await Promise.race([
-        Promise.resolve(fixtureComplete(prompt, cfg.model)),
-        new Promise<never>((_, rej) => setTimeout(() => rej(new ModelUnavailable('timeout')), cfg.timeoutMs)),
-      ]));
-    } else {
-      // Live providers are configured here but not called in this phase: no key has been supplied and approved.
-      throw new ModelUnavailable('live_provider_not_enabled');
-    }
-    const outTok = est(text);
-    const cost = Math.ceil((inTok * cfg.priceInputMicros + outTok * cfg.priceOutputMicros) / 1_000_000);
-    const parsed = AnswerOut.safeParse(JSON.parse(text));
-    await tx.insert(aiUsageRecords).values({
+  /**
+   * One metered call: budgets first (a refusal is recorded), then the provider, then a usage row whatever happened.
+   * Token counts are the provider's own when it reports them, and an estimate otherwise.
+   */
+  private async metered(
+    tx: Tx,
+    cfg: Config,
+    ctx: { tenantId: string; projectId: string | null; jobId: string | null; sessionId: string | null },
+    purpose: string,
+    prompt: Prompt,
+    parse: (text: string) => boolean,
+  ) {
+    const inEst = est(prompt.system) + est(prompt.user);
+    const worst = Math.ceil((inEst * cfg.priceInputMicros + cfg.maxOutputTokens * cfg.priceOutputMicros) / 1_000_000);
+    const base = {
       tenantId: ctx.tenantId,
       projectId: ctx.projectId,
       jobId: ctx.jobId,
       sessionId: ctx.sessionId,
       provider: cfg.provider,
       model: cfg.model,
-      modelVersion,
-      purpose: 'answer_open_question',
+      purpose,
+    };
+    for (const b of await this.budgets(tx, ctx.projectId)) {
+      if (b.spentMicros + worst > b.limitMicros) {
+        await tx
+          .insert(aiUsageRecords)
+          .values({ ...base, inputTokens: 0, outputTokens: 0, costMicros: 0, latencyMs: 0, status: 'refused_budget' });
+        throw new BudgetStop();
+      }
+    }
+    const started = Date.now();
+    let out: Completion;
+    try {
+      out =
+        cfg.kind === 'fixture'
+          ? await Promise.race([
+              Promise.resolve(fixtureComplete(prompt, cfg.model)),
+              new Promise<never>((_, rej) => setTimeout(() => rej(new ModelUnavailable('timeout')), cfg.timeoutMs)),
+            ])
+          : await complete(this.connection(cfg), prompt);
+    } catch (e) {
+      if (e instanceof ModelUnavailable)
+        await tx
+          .insert(aiUsageRecords)
+          .values({
+            ...base,
+            inputTokens: 0,
+            outputTokens: 0,
+            costMicros: 0,
+            latencyMs: Date.now() - started,
+            status: e.reason,
+          });
+      throw e;
+    }
+    const inTok = out.inputTokens ?? inEst;
+    const outTok = out.outputTokens ?? est(out.text);
+    const ok = parse(out.text);
+    await tx.insert(aiUsageRecords).values({
+      ...base,
+      modelVersion: out.modelVersion,
       inputTokens: inTok,
       outputTokens: outTok,
-      costMicros: cost,
+      costMicros: Math.ceil((inTok * cfg.priceInputMicros + outTok * cfg.priceOutputMicros) / 1_000_000),
       latencyMs: Date.now() - started,
-      status: parsed.success ? 'ok' : 'invalid_output',
+      status: ok ? 'ok' : 'invalid_output',
     });
-    return parsed.success ? { answer: parsed.data.answer } : ({ invalid: true } as const);
+    return { ...out, ok, latencyMs: Date.now() - started };
+  }
+
+  async answer(tx: Tx, ctx: CallContext, q: PublicQuestion, p: ProfileView) {
+    const [cfg] = await tx
+      .select()
+      .from(providerConfigurations)
+      .where(eq(providerConfigurations.enabled, true))
+      .limit(1);
+    if (!cfg) throw new ModelUnavailable('no_enabled_provider');
+    let data: z.infer<typeof AnswerOut> | null = null;
+    await this.metered(tx, cfg, ctx, 'answer_open_question', buildPrompt(q, p), (text) => {
+      const r = AnswerOut.safeParse(extractJson(text));
+      data = r.success ? r.data : null;
+      return r.success;
+    });
+    const got = data as z.infer<typeof AnswerOut> | null;
+    return got ? { answer: got.answer } : ({ invalid: true } as const);
+  }
+
+  /** A small fictional question, so a person can see a connection work before turning it on. It is metered too. */
+  async test(tx: Tx, tenantId: string, cfg: Config) {
+    const prompt = buildPrompt(
+      {
+        id: 'connection-test',
+        inputKind: 'text',
+        text: 'In one sentence, what makes a shopping trip easy?',
+        language: 'en',
+      },
+      { age: 34, gender: 'female', country: 'GB', language: 'en', attributes: {} },
+    );
+    try {
+      let sample: string | null = null;
+      const r = await this.metered(
+        tx,
+        cfg,
+        { tenantId, projectId: null, jobId: null, sessionId: null },
+        'connection_test',
+        prompt,
+        (text) => {
+          const a = AnswerOut.safeParse(extractJson(text));
+          sample = a.success ? a.data.answer : null;
+          return a.success;
+        },
+      );
+      return {
+        ok: r.ok,
+        reason: r.ok ? null : 'invalid_output',
+        detail: r.ok ? null : 'The model answered, but not in the JSON shape SampIntel asks for. Try a larger model.',
+        modelVersion: r.modelVersion,
+        latencyMs: r.latencyMs,
+        inputTokens: r.inputTokens,
+        outputTokens: r.outputTokens,
+        sample,
+      };
+    } catch (e) {
+      if (e instanceof BudgetStop)
+        return {
+          ok: false,
+          reason: 'refused_budget',
+          detail: 'A budget would be exceeded',
+          modelVersion: null,
+          latencyMs: 0,
+          inputTokens: null,
+          outputTokens: null,
+          sample: null,
+        };
+      if (e instanceof ModelUnavailable)
+        return {
+          ok: false,
+          reason: e.reason,
+          detail: e.detail ?? null,
+          modelVersion: null,
+          latencyMs: null,
+          inputTokens: null,
+          outputTokens: null,
+          sample: null,
+        };
+      throw e;
+    }
   }
 }

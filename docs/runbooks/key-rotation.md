@@ -33,4 +33,4 @@ Update the Prometheus scrape config and the API together; there is no overlap wi
 - **Supply360 service tokens (`sik.`):** issue a new token under integration tokens (shown once), save it in
   Supply360, then revoke the old one. Tokens are stored as hashes, so they need no re-seal.
 - **Model provider keys:** save the new key in the provider configuration (sealed at once), then revoke the old key
-  with the provider.
+  with the provider. Each connection added on AI API Management (Claude, Groq, OpenRouter and so on) has its own sealed key.

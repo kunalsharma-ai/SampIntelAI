@@ -33,7 +33,10 @@ const authBody = (o: Record<string, unknown> = {}) => ({
 async function user(role: Role, slug = 'alpha') {
   const email = `${role}@${slug}.example.invalid`;
   const a = slug === 'alpha' ? admin : beta;
-  const r = await a.post('/api/v1/users').set(csrf).send({ name: `Test ${role}`, email, password: PASSWORD, roles: [role] });
+  const r = await a
+    .post('/api/v1/users')
+    .set(csrf)
+    .send({ name: `Test ${role}`, email, password: PASSWORD, roles: [role] });
   if (r.status !== 201 && r.status !== 200) throw new Error(`user ${r.status} ${JSON.stringify(r.body)}`);
   return (await signIn(h, slug, email)).agent;
 }
@@ -41,16 +44,35 @@ async function user(role: Role, slug = 'alpha') {
 async function approvedAuth(o: Record<string, unknown> = {}) {
   const r = await ops.post('/api/v1/authorizations').set(csrf).send(authBody(o));
   expect(r.status).toBe(201);
-  const d = await head.post(`/api/v1/authorizations/${r.body.id}/decision`).set(csrf).send({ decision: 'approve', reason: 'Signed SOW on file' });
+  const d = await head
+    .post(`/api/v1/authorizations/${r.body.id}/decision`)
+    .set(csrf)
+    .send({ decision: 'approve', reason: 'Signed SOW on file' });
   expect(d.status).toBe(200);
   return r.body.id as string;
 }
 
-async function project(code: string, authorizationId: string, client = 'grocery-client/v1', gate: string | null = 'grocery-gate/v1', extra = {}) {
+async function project(
+  code: string,
+  authorizationId: string,
+  client = 'grocery-client/v1',
+  gate: string | null = 'grocery-gate/v1',
+  extra = {},
+) {
   const r = await ops
     .post('/api/v1/qa/projects')
     .set(csrf)
-    .send({ code, name: `Test ${code}`, authorizationId, environment: 'sandbox', clientUrl: fx(client), ...(gate ? { gateUrl: fx(gate) } : {}), samptrekProjectRef: 'PRX10001', expectedLoiMinutes: 10, ...extra });
+    .send({
+      code,
+      name: `Test ${code}`,
+      authorizationId,
+      environment: 'sandbox',
+      clientUrl: fx(client),
+      ...(gate ? { gateUrl: fx(gate) } : {}),
+      samptrekProjectRef: 'PRX10001',
+      expectedLoiMinutes: 10,
+      ...extra,
+    });
   expect(r.status, JSON.stringify(r.body)).toBe(201);
   return r.body.id as string;
 }
@@ -61,12 +83,24 @@ async function scenario(projectId: string, name: string, profileCode: string, o:
   const r = await ops
     .post('/api/v1/qa/scenarios')
     .set(csrf)
-    .send({ projectId, name, profileId: prof(profileCode), objective: 'complete_path', language: 'en', timing: 'nominal', answerStrategy: 'rules', ...o });
+    .send({
+      projectId,
+      name,
+      profileId: prof(profileCode),
+      objective: 'complete_path',
+      language: 'en',
+      timing: 'nominal',
+      answerStrategy: 'rules',
+      ...o,
+    });
   expect(r.status, JSON.stringify(r.body)).toBe(201);
   return r.body.id as string;
 }
 async function job(projectId: string, scenarioIds: string[], sessionsPerScenario = 1, extra = {}) {
-  const r = await ops.post('/api/v1/qa/jobs').set(csrf).send({ projectId, scenarioIds, sessionsPerScenario, ...extra });
+  const r = await ops
+    .post('/api/v1/qa/jobs')
+    .set(csrf)
+    .send({ projectId, scenarioIds, sessionsPerScenario, ...extra });
   return r;
 }
 const tick = async () => (await ops.post('/api/v1/qa/tick').set(csrf)).body;
@@ -87,25 +121,46 @@ afterAll(async () => h?.close());
 
 describe('authorization centre', () => {
   it('ships a fictional profile library', () => {
-    expect(profiles.map((p) => p.code)).toEqual(['FP-01', 'FP-02', 'FP-03', 'FP-04', 'FP-05', 'FP-06', 'FP-07', 'FP-08']);
+    expect(profiles.map((p) => p.code)).toEqual([
+      'FP-01',
+      'FP-02',
+      'FP-03',
+      'FP-04',
+      'FP-05',
+      'FP-06',
+      'FP-07',
+      'FP-08',
+    ]);
   });
 
   it('the QA operator can record a request but not approve it; a supply head approves', async () => {
     const r = await ops.post('/api/v1/authorizations').set(csrf).send(authBody());
     expect(r.status).toBe(201);
     expect(r.body.state).toBe('pending');
-    const self = await ops.post(`/api/v1/authorizations/${r.body.id}/decision`).set(csrf).send({ decision: 'approve', reason: 'mine' });
+    const self = await ops
+      .post(`/api/v1/authorizations/${r.body.id}/decision`)
+      .set(csrf)
+      .send({ decision: 'approve', reason: 'mine' });
     expect(self.status).toBe(403);
-    const ok = await head.post(`/api/v1/authorizations/${r.body.id}/decision`).set(csrf).send({ decision: 'approve', reason: 'SOW on file' });
+    const ok = await head
+      .post(`/api/v1/authorizations/${r.body.id}/decision`)
+      .set(csrf)
+      .send({ decision: 'approve', reason: 'SOW on file' });
     expect(ok.body.state).toBe('approved');
     expect(ok.body.decidedByEmail).toBe('supply_head@alpha.example.invalid');
-    const again = await head.post(`/api/v1/authorizations/${r.body.id}/decision`).set(csrf).send({ decision: 'reject', reason: 'late' });
+    const again = await head
+      .post(`/api/v1/authorizations/${r.body.id}/decision`)
+      .set(csrf)
+      .send({ decision: 'reject', reason: 'late' });
     expect(again.status).toBe(409);
   });
 
   it('separation of duties holds even for an admin who holds every permission', async () => {
     const r = await admin.post('/api/v1/authorizations').set(csrf).send(authBody());
-    const d = await admin.post(`/api/v1/authorizations/${r.body.id}/decision`).set(csrf).send({ decision: 'approve', reason: 'self' });
+    const d = await admin
+      .post(`/api/v1/authorizations/${r.body.id}/decision`)
+      .set(csrf)
+      .send({ decision: 'approve', reason: 'self' });
     expect(d.status).toBe(403);
     expect(d.body.code).toBe('separation_of_duties');
   });
@@ -122,7 +177,16 @@ describe('authorization centre', () => {
 
   it('a pending authorization cannot back a QA project', async () => {
     const r = await ops.post('/api/v1/authorizations').set(csrf).send(authBody());
-    const p = await ops.post('/api/v1/qa/projects').set(csrf).send({ code: 'QA-PENDING', name: 'Pending', authorizationId: r.body.id, environment: 'sandbox', clientUrl: fx('grocery-client/v1') });
+    const p = await ops
+      .post('/api/v1/qa/projects')
+      .set(csrf)
+      .send({
+        code: 'QA-PENDING',
+        name: 'Pending',
+        authorizationId: r.body.id,
+        environment: 'sandbox',
+        clientUrl: fx('grocery-client/v1'),
+      });
     expect(p.status).toBe(409);
     expect(p.body.code).toBe('authorization_not_usable');
   });
@@ -131,12 +195,39 @@ describe('authorization centre', () => {
 describe('QA projects', () => {
   it('only allowed hosts and, in sandbox, only the fixture host', async () => {
     const a = await approvedAuth();
-    const other = await ops.post('/api/v1/qa/projects').set(csrf).send({ code: 'QA-X1', name: 'Xyz', authorizationId: a, environment: 'sandbox', clientUrl: 'https://client.example.com/s/1' });
+    const other = await ops
+      .post('/api/v1/qa/projects')
+      .set(csrf)
+      .send({
+        code: 'QA-X1',
+        name: 'Xyz',
+        authorizationId: a,
+        environment: 'sandbox',
+        clientUrl: 'https://client.example.com/s/1',
+      });
     expect(other.body.code).toBe('endpoint_not_allowed');
-    const env = await ops.post('/api/v1/qa/projects').set(csrf).send({ code: 'QA-X2', name: 'Xyz', authorizationId: a, environment: 'live', clientUrl: fx('grocery-client/v1') });
+    const env = await ops
+      .post('/api/v1/qa/projects')
+      .set(csrf)
+      .send({
+        code: 'QA-X2',
+        name: 'Xyz',
+        authorizationId: a,
+        environment: 'live',
+        clientUrl: fx('grocery-client/v1'),
+      });
     expect(env.body.code).toBe('environment_not_authorized');
     const a2 = await approvedAuth({ allowedHosts: [QA_FIXTURE_HOST, 'client.example.com'] });
-    const sb = await ops.post('/api/v1/qa/projects').set(csrf).send({ code: 'QA-X3', name: 'Xyz', authorizationId: a2, environment: 'sandbox', clientUrl: 'https://client.example.com/s/1' });
+    const sb = await ops
+      .post('/api/v1/qa/projects')
+      .set(csrf)
+      .send({
+        code: 'QA-X3',
+        name: 'Xyz',
+        authorizationId: a2,
+        environment: 'sandbox',
+        clientUrl: 'https://client.example.com/s/1',
+      });
     expect(sb.body.code).toBe('sandbox_only_fixtures');
   });
 });
@@ -196,14 +287,20 @@ describe('execution, results and regression', () => {
 
   it('a quality analyst reviews a session; the QA operator cannot see IP records without permission', async () => {
     const [s] = (await analyst.get(`/api/v1/qa/sessions?projectId=${pid}`)).body;
-    const r = await analyst.post(`/api/v1/qa/sessions/${s.id}/review`).set(csrf).send({ status: 'reviewed_ok', note: 'Expected path' });
+    const r = await analyst
+      .post(`/api/v1/qa/sessions/${s.id}/review`)
+      .set(csrf)
+      .send({ status: 'reviewed_ok', note: 'Expected path' });
     expect(r.status).toBe(200);
     expect((await head.get(`/api/v1/qa/ip-records?projectId=${pid}`)).status).toBe(403);
     expect((await analyst.get(`/api/v1/qa/ip-records?projectId=${pid}`)).body).toHaveLength(8);
   });
 
   it('compares two survey versions scenario by scenario', async () => {
-    const u = await ops.patch(`/api/v1/qa/projects/${pid}/urls`).set(csrf).send({ clientUrl: fx('grocery-client/v2') });
+    const u = await ops
+      .patch(`/api/v1/qa/projects/${pid}/urls`)
+      .set(csrf)
+      .send({ clientUrl: fx('grocery-client/v2') });
     expect(u.status).toBe(200);
     const j = await job(pid, scen, 1);
     jobB = j.body.id;
@@ -276,8 +373,16 @@ describe('stop rules at the worker', () => {
     const p2 = await project('QA-REDIR', a, 'redirect-check/v1', null);
     const j2 = await job(p2, [await scenario(p2, 'redirect', 'FP-01')], 3);
     await tick();
-    expect(await jobRow(j1.body.id)).toMatchObject({ status: 'stopped', stopReason: 'security_challenge', doneSessions: 1 });
-    expect(await jobRow(j2.body.id)).toMatchObject({ status: 'stopped', stopReason: 'unexpected_navigation', doneSessions: 1 });
+    expect(await jobRow(j1.body.id)).toMatchObject({
+      status: 'stopped',
+      stopReason: 'security_challenge',
+      doneSessions: 1,
+    });
+    expect(await jobRow(j2.body.id)).toMatchObject({
+      status: 'stopped',
+      stopReason: 'unexpected_navigation',
+      doneSessions: 1,
+    });
   });
 
   it('waits outside the execution window instead of running', async () => {
@@ -287,7 +392,11 @@ describe('stop rules at the worker', () => {
     const p = await project('QA-WINDOW', a);
     const j = await job(p, [await scenario(p, 'window', 'FP-01')], 1);
     await tick();
-    expect(await jobRow(j.body.id)).toMatchObject({ status: 'queued', waitingFor: 'outside_execution_window', doneSessions: 0 });
+    expect(await jobRow(j.body.id)).toMatchObject({
+      status: 'queued',
+      waitingFor: 'outside_execution_window',
+      doneSessions: 0,
+    });
   });
 
   it('revoking an authorization stops its jobs at once and blocks new ones', async () => {
@@ -317,17 +426,171 @@ describe('stop rules at the worker', () => {
 });
 
 describe('model gateway and budgets', () => {
+  const claude = {
+    kind: 'anthropic',
+    label: 'Claude',
+    model: 'claude-opus-5-5',
+    timeoutMs: 15000,
+    maxOutputTokens: 2000,
+    priceInputPerMTokUsd: 3,
+    priceOutputPerMTokUsd: 15,
+  };
+  const groq = {
+    kind: 'openai_compatible',
+    label: 'Groq (free tier)',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    model: 'some-open-model',
+    timeoutMs: 15000,
+    maxOutputTokens: 400,
+    priceInputPerMTokUsd: 0,
+    priceOutputPerMTokUsd: 0,
+  };
+
   it('refuses to turn on a live provider without a key, and never returns a key', async () => {
-    const off = await ops.put('/api/v1/ai/providers/anthropic').set(csrf).send({ model: 'test-model', enabled: true, timeoutMs: 15000, maxOutputTokens: 300, priceInputPerMTokUsd: 3, priceOutputPerMTokUsd: 15 });
+    const off = await ops
+      .put('/api/v1/ai/providers/anthropic')
+      .set(csrf)
+      .send({ ...claude, enabled: true });
     expect(off.body.code).toBe('key_required');
-    await ops.put('/api/v1/ai/providers/anthropic').set(csrf).send({ model: 'test-model', apiKey: 'sk-test-not-a-real-key', enabled: false, timeoutMs: 15000, maxOutputTokens: 300, priceInputPerMTokUsd: 3, priceOutputPerMTokUsd: 15 });
+    await ops
+      .put('/api/v1/ai/providers/anthropic')
+      .set(csrf)
+      .send({ ...claude, apiKey: 'sk-test-not-a-real-key', enabled: false });
     const list = await ops.get('/api/v1/ai/providers');
     expect(JSON.stringify(list.body)).not.toContain('sk-test');
-    expect(list.body.find((p: { provider: string }) => p.provider === 'anthropic').hasKey).toBe(true);
+    expect(list.body.find((p: { id: string }) => p.id === 'anthropic').hasKey).toBe(true);
+  });
+
+  it("adds any OpenAI-compatible AI under a name of the tenant's choosing, and removes it", async () => {
+    const add = await ops
+      .put('/api/v1/ai/providers/groq-free')
+      .set(csrf)
+      .send({ ...groq, apiKey: 'gsk-test-not-a-real-key', enabled: false });
+    expect(add.status).toBe(200);
+    const row = (await ops.get('/api/v1/ai/providers')).body.find((p: { id: string }) => p.id === 'groq-free');
+    expect(row).toMatchObject({
+      kind: 'openai_compatible',
+      label: 'Groq (free tier)',
+      baseUrl: 'https://api.groq.com/openai/v1',
+      hasKey: true,
+      live: true,
+    });
+    expect(
+      (
+        await ops
+          .put('/api/v1/ai/providers/bad')
+          .set(csrf)
+          .send({ ...groq, baseUrl: undefined, enabled: false })
+      ).body.code,
+    ).toBe('base_url_required');
+    expect(
+      (
+        await ops
+          .put('/api/v1/ai/providers/Bad_Name')
+          .set(csrf)
+          .send({ ...groq, enabled: false })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await ops
+          .put('/api/v1/ai/providers/fixture')
+          .set(csrf)
+          .send({ ...groq, enabled: false })
+      ).body.code,
+    ).toBe('fixture_reserved');
+    expect((await ops.delete('/api/v1/ai/providers/fixture').set(csrf)).body.code).toBe('fixture_reserved');
+    expect((await ops.delete('/api/v1/ai/providers/groq-free').set(csrf)).status).toBe(200);
+    expect((await ops.get('/api/v1/ai/providers')).body.some((p: { id: string }) => p.id === 'groq-free')).toBe(false);
+    expect((await ops.delete('/api/v1/ai/providers/groq-free').set(csrf)).status).toBe(404);
+  });
+
+  it('never sends a key to a private or plain-http address, nor to a new address without re-entering it', async () => {
+    for (const baseUrl of [
+      'http://api.example.com/v1',
+      'https://localhost/v1',
+      'https://10.0.0.5/v1',
+      'https://169.254.169.254/latest',
+      'https://[::1]/v1',
+      'https://db.internal/v1',
+      'https://user:pw@api.example.com/v1',
+    ])
+      expect(
+        (
+          await ops
+            .put('/api/v1/ai/providers/evil')
+            .set(csrf)
+            .send({ ...groq, baseUrl, apiKey: 'k-test-not-a-real-key', enabled: false })
+        ).status,
+        baseUrl,
+      ).toBe(400);
+    await ops
+      .put('/api/v1/ai/providers/moving')
+      .set(csrf)
+      .send({ ...groq, apiKey: 'k-test-not-a-real-key', enabled: false });
+    const moved = await ops
+      .put('/api/v1/ai/providers/moving')
+      .set(csrf)
+      .send({ ...groq, baseUrl: 'https://api.other.example/v1', enabled: false });
+    expect(moved.body.code).toBe('key_reentry_required');
+    const models = await ops
+      .post('/api/v1/ai/models')
+      .set(csrf)
+      .send({ kind: 'openai_compatible', baseUrl: 'https://api.other.example/v1', connection: 'moving' });
+    expect(models.body.code).toBe('key_required');
+    await ops.delete('/api/v1/ai/providers/moving').set(csrf);
+  });
+
+  it('tests a saved connection with a metered call and reports why it failed', async () => {
+    // .invalid never resolves, so this is deterministic and nothing leaves the machine.
+    await ops
+      .put('/api/v1/ai/providers/nowhere')
+      .set(csrf)
+      .send({ ...groq, baseUrl: 'https://api.nowhere.invalid/v1', apiKey: 'k-test-not-a-real-key', enabled: false });
+    const t = await ops.post('/api/v1/ai/providers/nowhere/test').set(csrf);
+    expect(t.status).toBe(200);
+    expect(t.body).toMatchObject({ ok: false, reason: 'address_host_not_found' });
+    await ops
+      .put('/api/v1/ai/providers/fixture')
+      .set(csrf)
+      .send({
+        kind: 'fixture',
+        label: 'FIXTURE',
+        model: 'fixture-answerer',
+        enabled: false,
+        timeoutMs: 5000,
+        maxOutputTokens: 200,
+        priceInputPerMTokUsd: 0,
+        priceOutputPerMTokUsd: 0,
+      });
+    const fx = await ops.post('/api/v1/ai/providers/fixture/test').set(csrf);
+    expect(fx.body).toMatchObject({ ok: true, modelVersion: 'fixture-answerer@fixture-1' });
+    expect(fx.body.sample.length).toBeGreaterThan(3);
+    const usage = (await ops.get('/api/v1/ai/usage')).body;
+    expect(
+      usage.recent.some(
+        (u: { provider: string; purpose: string; status: string }) =>
+          u.provider === 'nowhere' && u.purpose === 'connection_test' && u.status === 'address_host_not_found',
+      ),
+    ).toBe(true);
+    expect((await ops.post('/api/v1/ai/providers/missing/test').set(csrf)).status).toBe(404);
+    await ops.delete('/api/v1/ai/providers/nowhere').set(csrf);
   });
 
   it('answers open questions through the FIXTURE provider, records usage, and stops the job at the budget', async () => {
-    await ops.put('/api/v1/ai/providers/fixture').set(csrf).send({ model: 'fixture-answerer', enabled: true, timeoutMs: 5000, maxOutputTokens: 200, priceInputPerMTokUsd: 100, priceOutputPerMTokUsd: 400 });
+    await ops
+      .put('/api/v1/ai/providers/fixture')
+      .set(csrf)
+      .send({
+        kind: 'fixture',
+        label: 'FIXTURE',
+        model: 'fixture-answerer',
+        enabled: true,
+        timeoutMs: 5000,
+        maxOutputTokens: 200,
+        priceInputPerMTokUsd: 100,
+        priceOutputPerMTokUsd: 400,
+      });
     const a = await approvedAuth();
     const p = await project('QA-MODEL', a);
     const s = await scenario(p, 'model', 'FP-01', { answerStrategy: 'model' });
@@ -335,14 +598,21 @@ describe('model gateway and budgets', () => {
     await tick();
     expect((await jobRow(j1.body.id)).status).toBe('finished');
     const usage = (await ops.get('/api/v1/ai/usage')).body;
-    expect(usage.recent.filter((u: { status: string }) => u.status === 'ok')).toHaveLength(2);
+    expect(
+      usage.recent.filter(
+        (u: { status: string; purpose: string }) => u.status === 'ok' && u.purpose === 'answer_open_question',
+      ),
+    ).toHaveLength(2);
     expect(usage.recent[0].modelVersion).toBe('fixture-answerer@fixture-1');
     const det = (await ops.get(`/api/v1/qa/sessions?jobId=${j1.body.id}`)).body[0];
     const qs = (await ops.get(`/api/v1/qa/sessions/${det.id}`)).body.questions;
     expect(qs.filter((q: { answeredBy: string }) => q.answeredBy === 'model')).toHaveLength(2);
 
     const spent = usage.totals.reduce((n: number, t: { costUsd: number }) => n + t.costUsd, 0);
-    const b = await ops.put('/api/v1/ai/budgets').set(csrf).send({ scope: 'project', projectId: p, period: 'day', limitUsd: spent + 0.0001 });
+    const b = await ops
+      .put('/api/v1/ai/budgets')
+      .set(csrf)
+      .send({ scope: 'project', projectId: p, period: 'day', limitUsd: spent + 0.0001 });
     expect(b.status).toBe(200);
     const j2 = await job(p, [s], 3);
     await tick();
@@ -351,19 +621,36 @@ describe('model gateway and budgets', () => {
     expect(after.recent.some((u: { status: string }) => u.status === 'refused_budget')).toBe(true);
     const budgets = (await ops.get('/api/v1/ai/budgets')).body;
     expect(budgets[0]).toMatchObject({ scope: 'project', period: 'day' });
-    await ops.put('/api/v1/ai/providers/fixture').set(csrf).send({ model: 'fixture-answerer', enabled: false, timeoutMs: 5000, maxOutputTokens: 200, priceInputPerMTokUsd: 100, priceOutputPerMTokUsd: 400 });
+    await ops
+      .put('/api/v1/ai/providers/fixture')
+      .set(csrf)
+      .send({
+        kind: 'fixture',
+        label: 'FIXTURE',
+        model: 'fixture-answerer',
+        enabled: false,
+        timeoutMs: 5000,
+        maxOutputTokens: 200,
+        priceInputPerMTokUsd: 100,
+        priceOutputPerMTokUsd: 400,
+      });
   });
 });
 
 describe('Supply360 link and isolation', () => {
   let token: string;
   it('issues a scoped token once and serves a synthetic-only summary for a SampTrek project', async () => {
-    const t = await admin.post('/api/v1/integration/tokens').set(csrf).send({ name: 'Supply360', scopes: ['qa_summary.read'], expiresInDays: 30 });
+    const t = await admin
+      .post('/api/v1/integration/tokens')
+      .set(csrf)
+      .send({ name: 'Supply360', scopes: ['qa_summary.read'], expiresInDays: 30 });
     expect(t.status).toBe(201);
     token = t.body.token;
     const list = (await admin.get('/api/v1/integration/tokens')).body;
     expect(JSON.stringify(list)).not.toContain(token.split('.')[3]);
-    const s = await h.http.get('/api/v1/integration/qa-summary?projectRef=PRX10001').set('authorization', `Bearer ${token}`);
+    const s = await h.http
+      .get('/api/v1/integration/qa-summary?projectRef=PRX10001')
+      .set('authorization', `Bearer ${token}`);
     expect(s.status).toBe(200);
     expect(s.body.classification).toBe('synthetic_qa');
     expect(s.body.sessions).toBeGreaterThan(0);
@@ -374,10 +661,16 @@ describe('Supply360 link and isolation', () => {
   it('refuses a missing, forged or revoked token', async () => {
     expect((await h.http.get('/api/v1/integration/qa-summary?projectRef=PRX10001')).status).toBe(401);
     const forged = token.slice(0, -4) + 'AAAA';
-    expect((await h.http.get('/api/v1/integration/qa-summary?projectRef=PRX10001').set('authorization', `Bearer ${forged}`)).status).toBe(401);
+    expect(
+      (await h.http.get('/api/v1/integration/qa-summary?projectRef=PRX10001').set('authorization', `Bearer ${forged}`))
+        .status,
+    ).toBe(401);
     const id = token.split('.')[2];
     await admin.delete(`/api/v1/integration/tokens/${id}`).set(csrf);
-    expect((await h.http.get('/api/v1/integration/qa-summary?projectRef=PRX10001').set('authorization', `Bearer ${token}`)).status).toBe(401);
+    expect(
+      (await h.http.get('/api/v1/integration/qa-summary?projectRef=PRX10001').set('authorization', `Bearer ${token}`))
+        .status,
+    ).toBe(401);
   });
 
   it('another tenant sees none of it', async () => {
@@ -398,7 +691,17 @@ describe('Supply360 link and isolation', () => {
 
   it('every consequential step is audited', async () => {
     const actions = (await admin.get('/api/v1/audit?limit=200')).body.items.map((i: { action: string }) => i.action);
-    for (const a of ['authorization.requested', 'authorization.approved', 'authorization.revoked', 'qa_project.created', 'qa_job.queued', 'qa.emergency_stop.on', 'budget.set', 'export.created', 'integration_token.created'])
+    for (const a of [
+      'authorization.requested',
+      'authorization.approved',
+      'authorization.revoked',
+      'qa_project.created',
+      'qa_job.queued',
+      'qa.emergency_stop.on',
+      'budget.set',
+      'export.created',
+      'integration_token.created',
+    ])
       expect(actions).toContain(a);
   });
 });
